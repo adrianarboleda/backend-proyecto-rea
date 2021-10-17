@@ -1,0 +1,151 @@
+const express = require('express');
+const router = express.Router();
+
+//mongo user model
+const User = require('./../models/User.js');
+
+//password handler
+const bcrypt = require('bcrypt');
+
+//Signup
+router.post('/signup', (req, res) =>{
+
+    console.log('req body',req.body);
+    let {name, email, password, dateOfBirth } = req.body;
+
+
+    name = name.trim();
+    email = email.trim();
+    password = password.trim();
+    dateOfBirth = dateOfBirth.trim();
+
+    if (name == '' || email == '' || password == '' || dateOfBirth == '' ) {
+        res.json({
+            status: "FAILED",
+            message: "Empty input fields",
+        })
+    } else if ( ! /^[a-zA-Z ]*$/.test(name)){
+        res.json({
+            status: "FAILED",
+            message: "Invalid name entered",
+        })
+    } else if( ! /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(email)) {
+        res.json({
+            status: "FAILED",
+            message: "Invalid email entered",
+        })
+    }else if( ! new Date(dateOfBirth).getTime()) {
+        res.json({
+            status: "FAILED",
+            message: "Invalid date of birth entered",
+        })
+    } else if (password.length < 8) {
+        res.json({
+            status: "FAILED",
+            message: "Password too short",
+        })
+    } else {
+        //Verificar si el usuario ya existe
+        User.find({email}).then(result => {
+            if (result.length) {
+                res.json({
+                    status: "FAILED",
+                    message: "User with the provided EMAIL already exists",
+                })
+            } else {
+                //try to create new user
+
+                //password handling
+                const saltRounds = 10;
+                bcrypt.hash(password, saltRounds).then(hashedPassword =>{
+                    const newUser = new User({
+                        name,
+                        email,
+                        password: hashedPassword,
+                        dateOfBirth
+                    })
+
+                    newUser.save().then(result => {
+                        res.json({
+                            status: "SUCCESS",
+                            message: "Signup succesful",
+                            data: result,
+                        })
+                    }).catch(err =>{
+                        res.json({
+                            status: "FAILED",
+                            message: "An error ocurred while saving user account",
+                        })
+                    })
+                }).catch(err => {
+                    res.json({
+                        status: "FAILED",
+                        message: "An error ocurred while hashing the password",
+                    })
+                })
+
+            }
+        }).catch (err => {
+            console.log(err);
+            res.json({
+                status: "FAILED",
+                message: "An error ocurred while checking for existing user",
+            })
+        })
+    }
+})
+
+//Signin
+router.post('/signin', (req, res) =>{
+    let {email, password } = req.body;
+
+    email = email.trim();
+    password = password.trim();
+
+    if (email == '' || password == '' ) {
+        res.json({
+            status: "FAILED",
+            message: "Empty input fields",
+        })
+    } else {
+        //Verificar si existe el usuario
+        User.find({email}).then(data =>{
+            if(data.length){
+                //User exist
+                const hashedPassword = data[0].password;
+                bcrypt.compare(password, hashedPassword).then(result =>{
+                    //Contraseñas coinciden
+                    if(result){
+                        res.json({
+                            status: "SUCCESS",
+                            message: "Sigin successful",
+                            data: data
+                        })
+                    } else {
+                        res.json({
+                            status: "FAILED",
+                            message: "Invalid password",
+                        })
+                    }
+                }).catch(err => {
+                    res.json({
+                        status: "FAILED",
+                        message: "An error ocurred while comparin passwords",
+                    })
+                })
+            } else {
+                res.json({
+                    status: "FAILED",
+                    message: "Invalid Credentials",
+                })
+            }
+        }).catch(err => {
+            res.json({
+                status: "FAILED",
+                message: "An error ocurred while checking for existing user",
+            })
+        })
+    }
+})
+
+module.exports = router;
